@@ -31,3 +31,34 @@ function drawImagePixelData(img_pixel_data, canvas) {
         }
     }
 }
+
+function packRGBAtoUint32(bytes) {
+    if (!(bytes instanceof Uint8ClampedArray)) {
+        throw new TypeError('bytes must be a Uint8ClampedArray');
+    }
+    const len = Math.floor(bytes.length / 4);
+    const out = new Uint32Array(len);
+    for (let i = 0, j = 0; i < len; i++, j += 4) {
+        const r = bytes[j];
+        const g = bytes[j + 1];
+        const b = bytes[j + 2];
+        const a = bytes[j + 3];
+        out[i] = (((r << 24) >>> 0) | (g << 16) | (b << 8) | a) >>> 0;
+    }
+    return out;
+}
+
+function unpackUint32toRGBA(pixels32) {
+    if (!(pixels32 instanceof Uint32Array)) {
+        throw new TypeError('pixels32 must be a Uint32Array');
+    }
+    const out = new Uint8ClampedArray(pixels32.length * 4);
+    for (let i = 0, j = 0; i < pixels32.length; i++, j += 4) {
+        const v = pixels32[i] >>> 0;
+        out[j] = (v >>> 24) & 0xFF; // R
+        out[j + 1] = (v >>> 16) & 0xFF; // G
+        out[j + 2] = (v >>> 8) & 0xFF; // B
+        out[j + 3] = v & 0xFF;          // A
+    }
+    return out;
+}

@@ -1,5 +1,5 @@
-const CANVAS_WIDTH = 200
-const CANVAS_HEIGHT = 200
+const CANVAS_WIDTH = 100
+const CANVAS_HEIGHT = 100
 
 const imageInputA = document.getElementById("imageInputA")
 const imageInputB = document.getElementById("imageInputB")
@@ -24,6 +24,8 @@ let imageB = null
 let inputPixelsA = null
 let inputPixelsB = null
 
+let GPU_AVAILABLE = false
+
 async function OnMorphButtonClick(event) {
 
     event.preventDefault()
@@ -36,8 +38,16 @@ async function OnMorphButtonClick(event) {
     let morphBtnText = morphButton.textContent
     morphButton.textContent = "Wait..."
 
+    let assignments = null
+
     // Calculate assignments
-    const assignments = assignPixelPositions(inputPixelsA, inputPixelsB)
+    if (GPU_AVAILABLE) {
+        assignments = await assignPixelPositionsGPU(inputPixelsA, inputPixelsB)
+    } else {
+        console.warn("GPU not available, falling back to CPU for assignment calculations, this may take a very long time...")
+        assignments = assignPixelPositions(inputPixelsA, inputPixelsB)
+    }
+
     if (assignments == null) {
         console.error("Error calculating pixel assignments!")
         return
@@ -118,5 +128,12 @@ function initPage() {
     morphButton.addEventListener("click", OnMorphButtonClick)
 }
 
-// Main entry point
-initPage()
+async function main() {
+    // Initialize GPU Shaders
+    GPU_AVAILABLE = await initShaders()
+
+    // Main entry point
+    initPage()
+}
+
+main()
