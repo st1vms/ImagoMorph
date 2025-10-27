@@ -70,7 +70,9 @@ fn resolveConflicts(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
 
     // Only update assignment if we found an unclaimed position
+    // Also atomically claim the new position to prevent race conditions
     if(foundUnclaimed) {
         assignments[i] = bestJ;
+        atomicAdd(&claimsCount[bestJ], 1u);
     }
 }
