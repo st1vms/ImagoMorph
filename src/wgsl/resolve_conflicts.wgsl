@@ -25,6 +25,7 @@ fn resolveConflicts(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     var minD: u32 = 0xffffffffu;
     var bestJ: u32 = 0u;
+    var foundUnclaimed: bool = false;
 
     let prevAssignment = assignments[i];
 
@@ -47,8 +48,12 @@ fn resolveConflicts(@builtin(global_invocation_id) gid: vec3<u32>) {
         if (d < minD) {
             minD = d;
             bestJ = j;
+            foundUnclaimed = true;
         }
     }
 
-    assignments[i] = bestJ;
+    // Only update assignment if we found an unclaimed position
+    if(foundUnclaimed) {
+        assignments[i] = bestJ;
+    }
 }

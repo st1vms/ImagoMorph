@@ -314,7 +314,7 @@ async function checkSolved(claimsBuffer, inputLength) {
         GPU_DEVICE,
         4,
         GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
-        new Uint32Array([1])
+        new Uint32Array([0])
     )
 
     let resultBindGroup = await createBindGroup(
@@ -342,8 +342,8 @@ async function checkSolved(claimsBuffer, inputLength) {
         4
     )
 
-    // 0 = Conflicts, 1 = No conflicts
-    return res[0] === 1
+    // 0 = No conflicts (solved), 1 = Conflicts found
+    return res[0] === 0
 }
 
 async function resolveConflicts(
