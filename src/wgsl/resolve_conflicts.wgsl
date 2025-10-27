@@ -14,6 +14,7 @@
 
 // Shared memory for tile-based processing
 const TILE_SIZE: u32 = 256u;
+const WORKGROUP_SIZE: u32 = 64u;
 var<workgroup> sharedPixelsB: array<u32, TILE_SIZE>;
 var<workgroup> sharedClaims: array<u32, TILE_SIZE>;
 
@@ -73,10 +74,12 @@ fn resolveConflicts(
         let tileCount = tileEnd - tileStart;
         
         // Load tile data into shared memory (cooperative loading)
-        for (var offset = local_id; offset < tileCount; offset += 64u) {
+        for (var offset = local_id; offset < tileCount; offset += WORKGROUP_SIZE) {
             let globalIdx = tileStart + offset;
             if (globalIdx < N) {
                 sharedPixelsB[offset] = pixelsB[globalIdx];
+                // Note: atomicLoad is safe here for checking unclaimed positions.
+                // We're only reading to filter out claimed positions, not for assignment decisions.
                 sharedClaims[offset] = atomicLoad(&claimsCount[globalIdx]);
             }
         }

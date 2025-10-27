@@ -10,9 +10,8 @@
 
 // Shared memory for tile-based processing
 const TILE_SIZE: u32 = 256u;
+const WORKGROUP_SIZE: u32 = 64u;
 var<workgroup> sharedPixelsB: array<u32, TILE_SIZE>;
-var<workgroup> sharedDistances: array<f32, 64>;
-var<workgroup> sharedIndices: array<u32, 64>;
 
 fn colorDistance(a: u32, b: u32) -> f32 {
     // Extract RGBA components from packed u32 (RGBA format: R=bits 24-31, G=16-23, B=8-15, A=0-7)
@@ -38,8 +37,7 @@ fn colorDistance(a: u32, b: u32) -> f32 {
 @compute @workgroup_size(64)
 fn calculateFirstAssignments(
     @builtin(global_invocation_id) gid: vec3<u32>,
-    @builtin(local_invocation_id) lid: vec3<u32>,
-    @builtin(workgroup_id) wid: vec3<u32>
+    @builtin(local_invocation_id) lid: vec3<u32>
 ) {
     let i = gid.x;
     let local_id = lid.x;
@@ -60,7 +58,7 @@ fn calculateFirstAssignments(
         let tileCount = tileEnd - tileStart;
         
         // Load tile into shared memory (cooperative loading)
-        for (var offset = local_id; offset < tileCount; offset += 64u) {
+        for (var offset = local_id; offset < tileCount; offset += WORKGROUP_SIZE) {
             let globalIdx = tileStart + offset;
             if (globalIdx < N) {
                 sharedPixelsB[offset] = pixelsB[globalIdx];
