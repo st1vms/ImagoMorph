@@ -415,7 +415,7 @@ async function assignPixelPositionsGPU(inputA, inputB) {
         let claims = await computeBufferToCPUBuffer(
             GPU_DEVICE,
             claimsOrderResult.claimsBuffer,
-            N
+            N * 4
         )
         console.log(
             Math.min(...claims),
