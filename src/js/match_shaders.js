@@ -142,7 +142,7 @@ async function initShaders() {
         GPU_DEVICE,
         [
             "read-only-storage",
-            "read-only-storage",
+            "storage",
             "storage",
         ],
         await loadShaderModule(GPU_DEVICE, "src\\wgsl\\check_conflicts.wgsl"),
@@ -342,7 +342,7 @@ async function checkSolved(claimsBuffer, inputLength) {
         4
     )
 
-    // 1 = Conflicts, 0 = No conflicts
+    // 0 = Conflicts, 1 = No conflicts
     return res[0] === 1
 }
 
@@ -398,7 +398,7 @@ async function assignPixelPositionsGPU(inputA, inputB) {
     const assignmentsData = await getFirstAssignments(
         inputA,
         inputB,
-        N * N
+        N
     )
 
     // Check if the first assignments have no conflicts
@@ -407,10 +407,24 @@ async function assignPixelPositionsGPU(inputA, inputB) {
     while (solved === false) {
 
         // Calculate claims count and priorities
-        const claimsOrderResult = await getClaimsAndPriorityBuffers(
+        let claimsOrderResult = await getClaimsAndPriorityBuffers(
             assignmentsData.assignmentsBuffer,
             N
         )
+
+        let claims = await computeBufferToCPUBuffer(
+            GPU_DEVICE,
+            claimsOrderResult.claimsBuffer,
+            N
+        )
+        console.log(
+            Math.min(...claims),
+            Math.max(...claims)
+        )
+
+        if(Math.max(...claims) === 1) {
+            console.log("...")
+        }
 
         solved = await checkSolved(
             claimsOrderResult.claimsBuffer,
