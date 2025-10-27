@@ -10,6 +10,7 @@
 
 // Shared memory for tile-based processing
 const TILE_SIZE: u32 = 256u;
+// WORKGROUP_SIZE must match @workgroup_size annotation below
 const WORKGROUP_SIZE: u32 = 64u;
 var<workgroup> sharedPixelsB: array<u32, TILE_SIZE>;
 
