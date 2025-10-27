@@ -130,7 +130,7 @@ async function initShaders() {
         "read-only-storage",
         "storage"
     ],
-        await loadShaderModule(GPU_DEVICE, "src\\wgsl\\first_assignment.wgsl"),
+        await loadShaderModule(GPU_DEVICE, "src/wgsl/first_assignment.wgsl"),
         "calculateFirstAssignments"
     )
     if (FIRST_ASSIGNMENT_PIPELINE == null) {
@@ -145,7 +145,7 @@ async function initShaders() {
             "storage",
             "storage",
         ],
-        await loadShaderModule(GPU_DEVICE, "src\\wgsl\\check_conflicts.wgsl"),
+        await loadShaderModule(GPU_DEVICE, "src/wgsl/check_conflicts.wgsl"),
         "checkConflicts"
     )
     if (CHECK_CONFLICT_PIPELINE == null) {
@@ -160,7 +160,7 @@ async function initShaders() {
         "storage",
         "storage"
     ],
-        await loadShaderModule(GPU_DEVICE, "src\\wgsl\\priority_claims.wgsl"),
+        await loadShaderModule(GPU_DEVICE, "src/wgsl/priority_claims.wgsl"),
         "calculateClaimCountsAndPriorities"
     )
     if (PRIORITY_CLAIMS_PIPELINE == null) {
@@ -178,7 +178,7 @@ async function initShaders() {
         "read-only-storage",
         "storage",
     ],
-        await loadShaderModule(GPU_DEVICE, "src\\wgsl\\resolve_conflicts.wgsl"),
+        await loadShaderModule(GPU_DEVICE, "src/wgsl/resolve_conflicts.wgsl"),
         "resolveConflicts"
     )
     if (RESOLVE_CONFLICTS_PIPELINE == null) {
