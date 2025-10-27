@@ -42,7 +42,10 @@ async function OnMorphButtonClick(event) {
 
     // Calculate assignments
     if (GPU_AVAILABLE) {
-        assignments = await assignPixelPositionsGPU(inputPixelsA, inputPixelsB)
+        assignments = await assignPixelPositionsGPU(
+            packRGBAtoUint32(inputPixelsA), 
+            packRGBAtoUint32(inputPixelsB)
+        )
     } else {
         console.warn("GPU not available, falling back to CPU for assignment calculations, this may take a very long time...")
         assignments = assignPixelPositions(inputPixelsA, inputPixelsB)

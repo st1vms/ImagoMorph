@@ -36,3 +36,4 @@ function assignPixelPositions(pixelsA, pixelsB) {
 
     return assignments
 }
+
