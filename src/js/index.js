@@ -133,7 +133,7 @@ function initPage() {
 
 async function main() {
     // Initialize GPU Shaders
-    GPU_AVAILABLE = await initShaders()
+    GPU_AVAILABLE = false //await initShaders()
 
     // Main entry point
     initPage()
