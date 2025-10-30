@@ -16,6 +16,7 @@ const outputCanvas = document.getElementById("canvas-output")
 outputCanvas.width = CANVAS_WIDTH
 outputCanvas.height = CANVAS_HEIGHT
 
+const useGPUCheckbox = document.getElementById("useGPUCheckbox")
 const morphButton = document.getElementById("morph-button")
 
 let imageA = null
@@ -41,13 +42,14 @@ async function OnMorphButtonClick(event) {
     let assignments = null
 
     // Calculate assignments
-    if (GPU_AVAILABLE) {
+    if (useGPUCheckbox.checked) {
+        console.warn("Using GPU shaders for assignment calculations...")
         assignments = await assignPixelPositionsGPU(
-            packRGBAtoUint32(inputPixelsA), 
+            packRGBAtoUint32(inputPixelsA),
             packRGBAtoUint32(inputPixelsB)
         )
     } else {
-        console.warn("GPU not available, falling back to CPU for assignment calculations, this may take a very long time...")
+        console.warn("GPU not available, falling back to CPU for assignment calculations...")
         assignments = assignPixelPositions(inputPixelsA, inputPixelsB)
     }
 
@@ -63,6 +65,10 @@ async function OnMorphButtonClick(event) {
 
     const N = inputPixelsA.length / 4
     for (let i = 0; i < N; i++) {
+        if (i < 0 || i >= assignments.length) {
+            console.warn("Invalid assignment: " + i)
+            continue
+        }
         const j = assignments[i]
 
         newOutput[j * 4] = inputPixelsA[i * 4]
@@ -133,7 +139,12 @@ function initPage() {
 
 async function main() {
     // Initialize GPU Shaders
-    GPU_AVAILABLE = false //await initShaders()
+    GPU_AVAILABLE = await initShaders()
+    if(GPU_AVAILABLE == false) {
+        useGPUCheckbox.disabled = true
+    }else {
+        useGPUCheckbox.disabled = false
+    }
 
     // Main entry point
     initPage()

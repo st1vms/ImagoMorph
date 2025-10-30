@@ -4,7 +4,7 @@ let GPU_DEVICE = undefined
 const DEFAULT_WORKGROUP_SIZE = 64
 
 let FIRST_ASSIGNMENT_PIPELINE = undefined
-let CHECK_CONFLICT_PIPELINE = undefined
+let CHECK_SOLVED_PIPELINE = undefined
 let PRIORITY_CLAIMS_PIPELINE = undefined
 let IDENTIFY_CONFLICTS_PIPELINE = undefined
 let RESOLVE_CONFLICTS_PIPELINE = undefined
@@ -58,7 +58,7 @@ async function runComputePass(device, pipeline, bindGroup, inputLength, workgrou
     pass.setBindGroup(0, bindGroup);
     pass.dispatchWorkgroups(
         Math.min(
-            Math.ceil(inputLength / workgroup_size), 
+            Math.ceil(inputLength / workgroup_size),
             GPU_ADAPTER.limits.maxComputeWorkgroupsPerDimension
         )
     );
@@ -122,66 +122,34 @@ async function initShaders() {
     }
 
     // Load shader modules
-
-    FIRST_ASSIGNMENT_PIPELINE = await createShaderPipeline(
-        GPU_DEVICE, [
-        "read-only-storage",
-        "read-only-storage",
-        "read-only-storage",
-        "storage"
-    ],
-        await loadShaderModule(GPU_DEVICE, "src/wgsl/first_assignment.wgsl"),
-        "calculateFirstAssignments"
-    )
-    if (FIRST_ASSIGNMENT_PIPELINE == null) {
-        console.error("Error loading shader...")
-        return false
-    }
-
-    CHECK_CONFLICT_PIPELINE = await createShaderPipeline(
+    CHECK_SOLVED_PIPELINE = await createShaderPipeline(
         GPU_DEVICE,
         [
             "read-only-storage",
             "storage",
             "storage",
         ],
-        await loadShaderModule(GPU_DEVICE, "src/wgsl/check_conflicts.wgsl"),
-        "checkConflicts"
+        await loadShaderModule(GPU_DEVICE, "src/wgsl/check_solved.wgsl"),
+        "checkSolved"
     )
-    if (CHECK_CONFLICT_PIPELINE == null) {
+    if (CHECK_SOLVED_PIPELINE == null) {
         console.error("Error loading shader...")
         return false
     }
 
-    PRIORITY_CLAIMS_PIPELINE = await createShaderPipeline(
+    FIRST_ASSIGNMENT_PIPELINE = await createShaderPipeline(
         GPU_DEVICE, [
+        "read-only-storage",
         "read-only-storage",
         "read-only-storage",
         "storage",
         "storage"
     ],
-        await loadShaderModule(GPU_DEVICE, "src/wgsl/priority_claims.wgsl"),
-        "calculateClaimCountsAndPriorities"
+        // TODO Change this
+        await loadShaderModule(GPU_DEVICE, "src/wgsl/calc_assignments.wgsl"),
+        "calculateAssignments"
     )
-    if (PRIORITY_CLAIMS_PIPELINE == null) {
-        console.error("Error loading shader...")
-        return false
-    }
-
-
-    RESOLVE_CONFLICTS_PIPELINE = await createShaderPipeline(
-        GPU_DEVICE, [
-        "read-only-storage",
-        "read-only-storage",
-        "read-only-storage",
-        "storage",
-        "read-only-storage",
-        "storage",
-    ],
-        await loadShaderModule(GPU_DEVICE, "src/wgsl/resolve_conflicts.wgsl"),
-        "resolveConflicts"
-    )
-    if (RESOLVE_CONFLICTS_PIPELINE == null) {
+    if (FIRST_ASSIGNMENT_PIPELINE == null) {
         console.error("Error loading shader...")
         return false
     }
@@ -189,9 +157,53 @@ async function initShaders() {
     return true
 }
 
-async function getFirstAssignments(inputA, inputB, inputLength) {
+async function checkSolved(usedJBuffer, N) {
 
-    const N = inputLength
+    const sizeConstantBuffer = await createBufferU32(
+        GPU_DEVICE,
+        4,
+        GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+        new Uint32Array([N])
+    )
+
+    const successResultBuffer = await createBufferU32(
+        GPU_DEVICE,
+        4,
+        GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+        new Uint32Array([1]) // Default 1: Success
+    )
+    let successResultBindGroup = await createBindGroup(
+        GPU_DEVICE,
+        CHECK_SOLVED_PIPELINE,
+        [
+            sizeConstantBuffer,
+            usedJBuffer,
+            successResultBuffer
+        ]
+    )
+
+    // Check if all positions are occupied
+    await runComputePass(
+        GPU_DEVICE,
+        CHECK_SOLVED_PIPELINE,
+        successResultBindGroup,
+        N,
+        DEFAULT_WORKGROUP_SIZE
+    )
+
+    // Read the result buffer
+    const success = await computeBufferToCPUBuffer(
+        GPU_DEVICE,
+        successResultBuffer,
+        4
+    )
+
+    return success[0] === 1
+}
+
+async function assignPixelPositionsGPU(inputA, inputB) {
+
+    const N = inputA.length
 
     // Create buffer to store the input size constant (N)
     const sizeConstantBuffer = await createBufferU32(
@@ -201,7 +213,7 @@ async function getFirstAssignments(inputA, inputB, inputLength) {
         new Uint32Array([N])
     )
 
-    // Create input/output buffers
+    // Create input buffers
     const _inputBufferA = await createBufferU32(
         GPU_DEVICE,
         inputA.byteLength,
@@ -216,238 +228,59 @@ async function getFirstAssignments(inputA, inputB, inputLength) {
         inputB
     )
 
-    const firstAssignmentsBuffer = await createBufferU32(
+    // Buffer for storing used positions
+    const usedJBuffer = await createBufferU32(
         GPU_DEVICE,
         N * 4,
         GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
     )
 
-    // Create bind group
+    // Output buffer
+    const assignmentsBuffer = await createBufferU32(
+        GPU_DEVICE,
+        N * 4,
+        GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+        new Uint32Array(N).fill(N)
+    )
+
+    // Create bind group for the assignments calculation compute pass
     const bindGroup = await createBindGroup(GPU_DEVICE, FIRST_ASSIGNMENT_PIPELINE,
         [
             sizeConstantBuffer,
             _inputBufferA,
             _inputBufferB,
-            firstAssignmentsBuffer,
-        ]
-    )
-
-    // Run compute pass
-    await runComputePass(GPU_DEVICE,
-        FIRST_ASSIGNMENT_PIPELINE,
-        bindGroup,
-        N,
-        DEFAULT_WORKGROUP_SIZE)
-
-    // Destroy unused buffers
-    sizeConstantBuffer.destroy()
-
-    return {
-        assignmentsBuffer: firstAssignmentsBuffer,
-        inputBufferA: _inputBufferA,
-        inputBufferB: _inputBufferB
-    }
-}
-
-
-async function getClaimsAndPriorityBuffers(assignmentsBuffer, inputLength) {
-
-    const N = inputLength
-
-    // Create buffer to store the input size constant (N)
-    const sizeConstantBuffer = await createBufferU32(
-        GPU_DEVICE,
-        4,
-        GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
-        new Uint32Array([N])
-    )
-
-    const _claimsBuffer = await createBufferU32(
-        GPU_DEVICE,
-        N * 4,
-        GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
-    )
-
-    const _priorityBuffer = await createBufferU32(
-        GPU_DEVICE,
-        N * 4,
-        GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
-    )
-
-    const bindGroup = await createBindGroup(
-        GPU_DEVICE,
-        PRIORITY_CLAIMS_PIPELINE,
-        [
-            sizeConstantBuffer,
-            assignmentsBuffer,
-            _claimsBuffer,
-            _priorityBuffer
-        ]
-    )
-
-    await runComputePass(
-        GPU_DEVICE,
-        PRIORITY_CLAIMS_PIPELINE,
-        bindGroup,
-        N,
-        DEFAULT_WORKGROUP_SIZE
-    )
-
-    return {
-        claimsBuffer: _claimsBuffer,
-        priorityBuffer: _priorityBuffer,
-    }
-}
-
-async function checkSolved(claimsBuffer, inputLength) {
-
-    const N = inputLength
-
-    const sizeConstantBuffer = await createBufferU32(
-        GPU_DEVICE,
-        4,
-        GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
-        new Uint32Array([N])
-    )
-
-    const resultBuffer = await createBufferU32(
-        GPU_DEVICE,
-        4,
-        GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
-        new Uint32Array([0])
-    )
-
-    let resultBindGroup = await createBindGroup(
-        GPU_DEVICE,
-        CHECK_CONFLICT_PIPELINE,
-        [
-            sizeConstantBuffer,
-            claimsBuffer,
-            resultBuffer
-        ]
-    )
-
-    await runComputePass(
-        GPU_DEVICE,
-        CHECK_CONFLICT_PIPELINE,
-        resultBindGroup,
-        N,
-        DEFAULT_WORKGROUP_SIZE
-    )
-
-    // Read the result buffer
-    const res = await computeBufferToCPUBuffer(
-        GPU_DEVICE,
-        resultBuffer,
-        4
-    )
-
-    // 0 = No conflicts (solved), 1 = Conflicts found
-    return res[0] === 0
-}
-
-async function resolveConflicts(
-    inputBufferA,
-    inputBufferB,
-    claimsCountBuffer,
-    prioritiesBuffer,
-    assignmentsBuffer,
-    inputLength
-) {
-    const N = inputLength
-
-    const sizeConstantBuffer = await createBufferU32(
-        GPU_DEVICE,
-        4,
-        GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
-        new Uint32Array([N])
-    )
-
-    const bindGroup = await createBindGroup(
-        GPU_DEVICE,
-        RESOLVE_CONFLICTS_PIPELINE,
-        [
-            sizeConstantBuffer,
-            inputBufferA,
-            inputBufferB,
-            claimsCountBuffer,
-            prioritiesBuffer,
+            usedJBuffer,
             assignmentsBuffer,
         ]
     )
 
-    await runComputePass(
-        GPU_DEVICE,
-        RESOLVE_CONFLICTS_PIPELINE,
-        bindGroup,
-        N,
-        DEFAULT_WORKGROUP_SIZE
-    )
-}
+    // Keep running compute pass to calculate positions
+    for (let i = 0; i < N; i++) {
+        await runComputePass(GPU_DEVICE,
+            FIRST_ASSIGNMENT_PIPELINE,
+            bindGroup,
+            N,
+            DEFAULT_WORKGROUP_SIZE)
 
-async function assignPixelPositionsGPU(inputA, inputB) {
-
-    await initShaders()
-
-    if (GPU_DEVICE == null) {
-        return
-    }
-
-    const N = inputA.length
-
-    const assignmentsData = await getFirstAssignments(
-        inputA,
-        inputB,
-        N
-    )
-
-    // Check if the first assignments have no conflicts
-    let solved = false
-    // Resolve conflict loop
-    while (solved === false) {
-
-        // Calculate claims count and priorities
-        let claimsOrderResult = await getClaimsAndPriorityBuffers(
-            assignmentsData.assignmentsBuffer,
-            N
-        )
-
-        let claims = await computeBufferToCPUBuffer(
+        // OPTIONAL
+        // Use the 1s count of usedJ to determine a progress status
+        const perc_status = Math.round((Array.from(await computeBufferToCPUBuffer(
             GPU_DEVICE,
-            claimsOrderResult.claimsBuffer,
+            usedJBuffer,
             N * 4
-        )
-        console.log(
-            Math.min(...claims),
-            Math.max(...claims)
-        )
+        )).filter(v => v === 1).length / N) * 100 * 100, 2) / 100
+        console.log(`Completion: ${perc_status}%`)
 
-        if(Math.max(...claims) === 1) {
-            console.log("...")
+        // 0 = some cells were left empty
+        if (await checkSolved(usedJBuffer, N)) {
+            break;
         }
-
-        solved = await checkSolved(
-            claimsOrderResult.claimsBuffer,
-            N
-        )
-        if (solved === true) {
-            break
-        }
-
-        await resolveConflicts(
-            assignmentsData.inputBufferA,
-            assignmentsData.inputBufferB,
-            claimsOrderResult.claimsBuffer,
-            claimsOrderResult.priorityBuffer,
-            assignmentsData.assignmentsBuffer,
-            N
-        )
     }
 
-    // Return the assignments as a CPU buffer
+    // Return assignments buffer as UInt32Array
     return await computeBufferToCPUBuffer(
         GPU_DEVICE,
-        assignmentsData.assignmentsBuffer,
+        assignmentsBuffer,
         N * 4
     )
 }
