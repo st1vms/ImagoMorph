@@ -32,6 +32,21 @@ function drawImagePixelData(img_pixel_data, canvas) {
     }
 }
 
+// Fast full-buffer blit using putImageData.
+// img_pixel_data is a Uint8ClampedArray (or ImageData) with .width/.height.
+function drawImageData(canvas, img_pixel_data) {
+    const ctx = canvas.getContext("2d");
+    const w = img_pixel_data.width;
+    const h = img_pixel_data.height;
+    let imageData;
+    if (img_pixel_data instanceof ImageData) {
+        imageData = img_pixel_data;
+    } else {
+        imageData = new ImageData(new Uint8ClampedArray(img_pixel_data), w, h);
+    }
+    ctx.putImageData(imageData, 0, 0);
+}
+
 function packUint8VecToUint32Vec(bytes) {
     if (!(bytes instanceof Uint8ClampedArray)) {
         throw new TypeError('bytes must be a Uint8ClampedArray');

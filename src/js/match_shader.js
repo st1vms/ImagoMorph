@@ -11,7 +11,7 @@ async function loadShaderModule(device, path) {
     return device.createShaderModule({ code: shaderCode });
 }
 
-async function createBindGroup(device, pipeline, binding_buffers) {
+function createBindGroup(device, pipeline, binding_buffers) {
 
     let entries = []
     for (let i = 0; i < binding_buffers.length; i++) {
@@ -26,7 +26,7 @@ async function createBindGroup(device, pipeline, binding_buffers) {
     });
 }
 
-async function createShaderPipeline(device, binding_buffer_types, shaderModule, entryPoint) {
+function createShaderPipeline(device, binding_buffer_types, shaderModule, entryPoint) {
 
     let entries = []
     for (let i = 0; i < binding_buffer_types.length; i++) {
@@ -47,7 +47,7 @@ async function createShaderPipeline(device, binding_buffer_types, shaderModule, 
     });
 }
 
-async function runComputePass(device, pipeline, bindGroup, inputLength, workgroup_size = 64) {
+function runComputePass(device, pipeline, bindGroup, inputLength, workgroup_size = 64) {
     const commandEncoder = device.createCommandEncoder();
     const pass = commandEncoder.beginComputePass();
     pass.setPipeline(pipeline);
@@ -63,10 +63,10 @@ async function runComputePass(device, pipeline, bindGroup, inputLength, workgrou
     // Perform assignment computations
     device.queue.submit([commandEncoder.finish()]);
 
-    await device.queue.onSubmittedWorkDone();
+    return device.queue.onSubmittedWorkDone();
 }
 
-async function createBufferU32(device, byteSize, usage, copySrcBuffer = null) {
+function createBufferU32(device, byteSize, usage, copySrcBuffer = null) {
 
     const buffer = device.createBuffer({
         size: byteSize,
@@ -98,11 +98,25 @@ async function computeBufferToCPUBuffer(device, buffer, bufferByteSize) {
 }
 
 async function initShaders() {
-    GPU_ADAPTER = await navigator.gpu.requestAdapter();
-    if (GPU_ADAPTER == null) {
-        console.error("Cannot retrieve GPU adapter...")
+    // Guard: WebGPU may not be available in this browser.
+    if (typeof navigator === "undefined" || navigator.gpu == null) {
+        console.warn("WebGPU is not available in this browser.");
         return false
     }
+
+    let adapter
+    try {
+        adapter = await navigator.gpu.requestAdapter();
+    } catch (err) {
+        console.warn("Failed to request WebGPU adapter:", err);
+        return false
+    }
+
+    if (adapter == null) {
+        console.warn("Cannot retrieve GPU adapter...")
+        return false
+    }
+    GPU_ADAPTER = adapter;
 
     // Request available device limits
     GPU_DEVICE = await GPU_ADAPTER.requestDevice({
@@ -118,13 +132,15 @@ async function initShaders() {
     }
 
     // Load shader module
-    CALC_ASSIGNMENTS_PIPELINE = await createShaderPipeline(
+    CALC_ASSIGNMENTS_PIPELINE = createShaderPipeline(
         GPU_DEVICE, [
-        "read-only-storage",
-        "read-only-storage",
-        "read-only-storage",
-        "storage",
-        "storage"
+        "read-only-storage", // N
+        "read-only-storage", // dims (vec2<u32>)
+        "read-only-storage", // spatialWeightBits
+        "read-only-storage", // pixelsA
+        "read-only-storage", // pixelsB
+        "storage",           // usedJ
+        "storage"            // assignments
     ],
         await loadShaderModule(GPU_DEVICE, "src/wgsl/calc_assignments.wgsl"),
         "calculateAssignments"
@@ -137,46 +153,48 @@ async function initShaders() {
     return true
 }
 
-async function checkSolved(usedJBuffer, N) {
-
-    // Read the used positions buffer
-    const usedJ = await computeBufferToCPUBuffer(
-        GPU_DEVICE,
-        usedJBuffer,
-        N * 4
-    )
-
-    // Check if all positions were occupied
-    for (let i = 0; i < N; i++) {
-        if (usedJ[i] == 0) {
-            return false
-        }
-    }
-
-    return true
-}
-
-async function assignPixelPositionsGPU(inputA, inputB) {
+// Single-pass GPU assignment.
+// inputA / inputB are packed Uint32Array (RGBA) of length N = W*H.
+// Returns a Promise<Uint32Array> of assignments, or null on failure.
+async function assignPixelPositionsGPU(inputA, inputB, W, H) {
 
     const N = inputA.length
 
     // Create buffer to store the input size constant (N)
-    const sizeConstantBuffer = await createBufferU32(
+    const sizeConstantBuffer = createBufferU32(
         GPU_DEVICE,
         4,
         GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
         new Uint32Array([N])
     )
 
+    // Dimensions buffer (vec2<u32> = 8 bytes)
+    const dimsBuffer = createBufferU32(
+        GPU_DEVICE,
+        8,
+        GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+        new Uint32Array([W, H])
+    )
+
+    // Spatial weight as f32 bits packed in a u32.
+    const f32sw = new Float32Array(1);
+    f32sw[0] = CONFIG.SPATIAL_WEIGHT;
+    const spatialWeightBuffer = createBufferU32(
+        GPU_DEVICE,
+        4,
+        GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+        new Uint32Array(f32sw.buffer)
+    )
+
     // Create input buffers
-    const _inputBufferA = await createBufferU32(
+    const _inputBufferA = createBufferU32(
         GPU_DEVICE,
         inputA.byteLength,
         GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
         inputA
     )
 
-    const _inputBufferB = await createBufferU32(
+    const _inputBufferB = createBufferU32(
         GPU_DEVICE,
         inputB.byteLength,
         GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
@@ -184,14 +202,14 @@ async function assignPixelPositionsGPU(inputA, inputB) {
     )
 
     // Buffer for storing used positions
-    const usedJBuffer = await createBufferU32(
+    const usedJBuffer = createBufferU32(
         GPU_DEVICE,
         N * 4,
         GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST
     )
 
-    // Output buffer
-    const assignmentsBuffer = await createBufferU32(
+    // Output buffer (initialized to N = "unclaimed")
+    const assignmentsBuffer = createBufferU32(
         GPU_DEVICE,
         N * 4,
         GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
@@ -199,9 +217,11 @@ async function assignPixelPositionsGPU(inputA, inputB) {
     )
 
     // Create bind group for the assignments calculation compute pass
-    const bindGroup = await createBindGroup(GPU_DEVICE, CALC_ASSIGNMENTS_PIPELINE,
+    const bindGroup = createBindGroup(GPU_DEVICE, CALC_ASSIGNMENTS_PIPELINE,
         [
             sizeConstantBuffer,
+            dimsBuffer,
+            spatialWeightBuffer,
             _inputBufferA,
             _inputBufferB,
             usedJBuffer,
@@ -209,30 +229,14 @@ async function assignPixelPositionsGPU(inputA, inputB) {
         ]
     )
 
-    // Keep running compute pass to calculate positions
-    for (let i = 0; i < N; i++) {
-        await runComputePass(GPU_DEVICE,
-            CALC_ASSIGNMENTS_PIPELINE,
-            bindGroup,
-            N,
-            DEFAULT_WORKGROUP_SIZE)
+    // Single compute pass.
+    await runComputePass(GPU_DEVICE,
+        CALC_ASSIGNMENTS_PIPELINE,
+        bindGroup,
+        N,
+        DEFAULT_WORKGROUP_SIZE)
 
-        // OPTIONAL
-        // Use the 1s count of usedJ to determine a progress status
-        const perc_status = Math.round((Array.from(await computeBufferToCPUBuffer(
-            GPU_DEVICE,
-            usedJBuffer,
-            N * 4
-        )).filter(v => v === 1).length / N) * 100 * 100, 2) / 100
-        console.log(`Completion: ${perc_status}%`)
-
-        // 0 = some cells were left empty
-        if (await checkSolved(usedJBuffer, N)) {
-            break;
-        }
-    }
-
-    // Return assignments buffer as UInt32Array
+    // Single readback of the assignments buffer.
     return await computeBufferToCPUBuffer(
         GPU_DEVICE,
         assignmentsBuffer,

@@ -6,8 +6,6 @@
 
     <title>Image Morph</title>
 
-    <link rel="stylesheet" href="libs/bootstrap/css/bootstrap.min.css">
-
     <link rel="stylesheet" href="src/css/index.css">
 
 </head>
@@ -16,9 +14,21 @@
 
     <div id="main-container">
 
-        <nav class="d-flex justify-content-center">
+        <nav>
             Image Morph
         </nav>
+
+        <div id="output-toolbar">
+            <button id="morph-button" type="button" disabled>
+                Morph
+            </button>
+            <span id="status-line" class="status-line"></span>
+        </div>
+
+        <div id="gpu-warning" class="gpu-warning" style="display: none;">
+            <span class="gpu-warning-icon">⚠</span>
+            WebGPU is not available in this browser — using the CPU fallback (slower).
+        </div>
 
         <div id="input-container">
 
@@ -29,7 +39,7 @@
                 <canvas id="canvasA" class="input-canvas">
             </div>
 
-            <span class="d-flex flex-column align-items-center p-3" style="white-space: nowrap;">
+            <span class="morph-label">
                 Morph into
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
                     class="bi bi-arrow-right" viewBox="0 0 16 16">
@@ -40,32 +50,15 @@
 
             <div class="canvas-container">
 
-                <input id="imageInputB" type="file" accept="image/*" disabled>
+                <input id="imageInputB" type="file" accept="image/*">
 
                 <canvas id="canvasB" class="input-canvas">
             </div>
 
         </div>
-
-        <div id="output-container">
-            
-            <label class="d-flex align-items-center gap-3" for="useGPUCheckbox">
-                Check to use GPU
-                <input id="useGPUCheckbox" type="checkbox" style="width: 16px; height: 16px;">
-            </label>
-
-            <button id="morph-button" type="button" class="btn btn-primary" disabled>
-                Morph
-            </button>
-
-            <div class="canvas-container">
-                <canvas id="canvas-output" class="output-canvas"></canvas>
-            </div>
-        </div>
     </div>
 
-    <script src="libs/bootstrap/js/bootstrap.bundle.min.js"></script>
-
+    <script src="src/js/config.js"></script>
     <script src="src/js/match_shader.js"></script>
     <script src="src/js/match.js"></script>
     <script src="src/js/pixels.js"></script>
